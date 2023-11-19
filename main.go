@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
@@ -33,6 +35,8 @@ func setCustomAuthHeaders(opts *mqtt.ClientOptions, clientId string) {
 }
 
 func main() {
+	cn := make(chan os.Signal, 1)
+	signal.Notify(cn, os.Interrupt, syscall.SIGTERM)
 	endPoint := "wss://connect.outsrights.cc:443"
 	clientId := "lindani-test"
 	privKeyPath := "keys/rsa.priv"
@@ -52,13 +56,15 @@ func main() {
 	}
 	fmt.Println("Connected to AWS IoT!")
 
-	// Now you can publish and subscribe to MQTT topics using the client
-	// For example, you can publish a message:
-	// token := client.Publish("your-topic", 0, false, "Hello, AWS IoT!")
-	// token.Wait()
+	//
+	fmt.Println("subcriscribing to ")
+
+	token := client.Subscribe(fmt.Sprintf("redhat/insights/%s/data/in", clientId), 1, nil)
+	token.Wait()
 
 	// Don't forget to handle MQTT messages, subscriptions, and other logic as needed
 
 	// Disconnect when done
+	<-cn
 	client.Disconnect(250)
 }

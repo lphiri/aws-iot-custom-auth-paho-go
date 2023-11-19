@@ -25,6 +25,13 @@ const CLIENT_AUTH_GROUP = "client"
 const ALLOW_EFFECT = "Allow"
 const DENY_EFFECT = "Deny"
 
+//IoT actions
+const RECEIVE_ACTION = "iot:Receive"
+const SUBSCRIBE_ACTION = "iot:Subscribe"
+const PUBLISH_ACTION = "iot:Publish"
+const CONNECT_ACTION = "iot:Connect"
+const ALL_ACTIONS = "iot:*"
+
 
 const generateAuthResponse = function (statement) {
     let authResponse = {};
@@ -35,8 +42,8 @@ const generateAuthResponse = function (statement) {
     policyDocument.Version = '2012-10-17';
     policyDocument.Statement = statement;
     authResponse.policyDocuments = [policyDocument];
-    authResponse.disconnectAfterInSeconds = 3600;
-    authResponse.refreshAfterInSeconds = 600;
+    authResponse.disconnectAfterInSeconds = 3600; //TODO 
+    authResponse.refreshAfterInSeconds = 600; //TODO
     console.log('authResponse --> ' + JSON.stringify(authResponse));
     return authResponse;
 }
@@ -89,12 +96,13 @@ const parseToken = function (token) {
                 return null
             }
         } else {
-            console.log("missing expiry date")
+            console.log("Token claim missing expiry date!")
             return null
         }
         if (claims[CLIENT_ID_KEY] && claims[AUTH_GROUP_KEY]) {
             return claims
         } else {
+            console.log("Token claim missing group.")
             return null
         }
     }
@@ -117,13 +125,13 @@ const generateRule = function (effect, action, resource, condition) {
 
 const generateConnectAllowRule = function (accountId, region, clientId) {
 
-    return generateRule(ALLOW_EFFECT, "iot:Connect", `arn:aws:iot:${region}:${accountId}:client/${clientId}`, null)
+    return generateRule(ALLOW_EFFECT, CONNECT_ACTION, `arn:aws:iot:${region}:${accountId}:client/${clientId}`, null)
 }
 
 
 const generateDenyPolicy = function (account, region) {
     let fullResource = "arn:aws:iot:" + region + ":" + account + ":*";
-    return generateRule(DENY_EFFECT, "iot:*", [fullResource])
+    return generateRule(DENY_EFFECT, ALL_ACTIONS, [fullResource])
 
 }
 
@@ -131,42 +139,48 @@ const generateDenyPolicy = function (account, region) {
 const generateAdminAllowPolicy = function (accountId, region, clientId) {
     let rules = []
     rules.push(generateConnectAllowRule(accountId, region, clientId))
+    //Admin clients must be able to publish to all other clients' "in" topics
     let publishTopics = [
-        `arn:aws:iot:${region}:${accountId}:topic/redhat/insights/*/control/out`,
-        `arn:aws:iot:${region}:${accountId}:topic/redhat/insights/*/data/out`
-    ]
-    rules.push(generateRule(ALLOW_EFFECT, "iot:Publish", publishTopics, null))
-    let subscribeTopicFilters = [
-        `arn:aws:iot:${region}:${accountId}:topicfilter/redhat/insights/*/control/in`,
-        `arn:aws:iot:${region}:${accountId}:topicfilter/redhat/insights/*/data/in`
-    ]
-    rules.push(generateRule(ALLOW_EFFECT, "iot:Subscribe", subscribeTopicFilters, null))
-    let subscribeTopics = [
         `arn:aws:iot:${region}:${accountId}:topic/redhat/insights/*/control/in`,
         `arn:aws:iot:${region}:${accountId}:topic/redhat/insights/*/data/in`
     ]
-    rules.push(generateRule(ALLOW_EFFECT, "iot:Receive", subscribeTopics, null))
+    rules.push(generateRule(ALLOW_EFFECT, PUBLISH_ACTION, publishTopics, null))
+    //Admin clients must be able to subscribe to all other clients' "out" topics
+    let subscribeTopicFilters = [
+        `arn:aws:iot:${region}:${accountId}:topicfilter/redhat/insights/*/control/out`,
+        `arn:aws:iot:${region}:${accountId}:topicfilter/redhat/insights/*/data/out`
+    ]
+    rules.push(generateRule(ALLOW_EFFECT, SUBSCRIBE_ACTION, subscribeTopicFilters, null))
+    //Admin clients must be able to read data in all clients' "out" topics
+    let subscribeTopics = [
+        `arn:aws:iot:${region}:${accountId}:topic/redhat/insights/*/control/out`,
+        `arn:aws:iot:${region}:${accountId}:topic/redhat/insights/*/data/out`
+    ]
+    rules.push(generateRule(ALLOW_EFFECT, RECEIVE_ACTION, subscribeTopics, null))
     return rules
 }
 
 const generateClientAllowPolicy = function (accountId, region, clientId) {
     let rules = []
     rules.push(generateConnectAllowRule(accountId, region, clientId))
+    //Clients must be able to publish to their own "out" topics
     let publishTopics = [
-        `arn:aws:iot:${region}:${accountId}:topic/redhat/insights/${clientId}/control/out`,
+        `arn:aws:iot:${region}:${accountId}:topic/redhat/insights/${clientId}}/control/out`,
         `arn:aws:iot:${region}:${accountId}:topic/redhat/insights/${clientId}/data/out`
     ]
-    rules.push(generateRule(ALLOW_EFFECT, "iot:Publish", publishTopics, null))
+    rules.push(generateRule(ALLOW_EFFECT, PUBLISH_ACTION, publishTopics, null))
+    //Clients must be able to subscribe to their own "in" topics
     let subscribeTopicFilters = [
         `arn:aws:iot:${region}:${accountId}:topicfilter/redhat/insights/${clientId}/control/in`,
         `arn:aws:iot:${region}:${accountId}:topicfilter/redhat/insights/${clientId}/data/in`
     ]
-    rules.push(generateRule(ALLOW_EFFECT, "iot:Subscribe", subscribeTopicFilters, null))
+    rules.push(generateRule(ALLOW_EFFECT, SUBSCRIBE_ACTION, subscribeTopicFilters, null))
+    //Clients must be able to read data in their own "in" topics
     let subscribeTopics = [
         `arn:aws:iot:${region}:${accountId}:topic/redhat/insights/${clientId}/control/in`,
         `arn:aws:iot:${region}:${accountId}:topic/redhat/insights/${clientId}/data/in`
     ]
-    rules.push(generateRule(ALLOW_EFFECT, "iot:Receive", subscribeTopics, null))
+    rules.push(generateRule(ALLOW_EFFECT, RECEIVE_ACTION, subscribeTopics, null))
     return rules
 
 }
